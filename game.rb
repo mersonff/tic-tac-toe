@@ -1,104 +1,159 @@
+# frozen_string_literal: true
+
+# Tic-Tac-Toe game
 class Game
-  def initialize
-    @board = ["0", "1", "2", "3", "4", "5", "6", "7", "8"]
-    @com = "X" # the computer's marker
-    @hum = "O" # the user's marker
+  WINNING_COMBINATIONS = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8], # Rows
+    [0, 3, 6], [1, 4, 7], [2, 5, 8], # Columns
+    [0, 4, 8], [2, 4, 6]             # Diagonals
+  ].freeze
+
+  def initialize(difficulty = 'hard', game_type = 'human_vs_computer')
+    @board = Array.new(9, &:to_s)
+    @current_player = 'X'
+    @players = { 'X' => 'Player 1', 'O' => 'Player 2' }
+    @difficulty = difficulty
+    @game_type = game_type
   end
 
   def start_game
-    # start by printing the board
-    puts " #{@board[0]} | #{@board[1]} | #{@board[2]} \n===+===+===\n #{@board[3]} | #{@board[4]} | #{@board[5]} \n===+===+===\n #{@board[6]} | #{@board[7]} | #{@board[8]} \n"
-    puts "Enter [0-8]:"
-    # loop through until the game was won or tied
-    until game_is_over(@board) || tie(@board)
-      get_human_spot
-      if !game_is_over(@board) && !tie(@board)
-        eval_board
-      end
-      puts " #{@board[0]} | #{@board[1]} | #{@board[2]} \n===+===+===\n #{@board[3]} | #{@board[4]} | #{@board[5]} \n===+===+===\n #{@board[6]} | #{@board[7]} | #{@board[8]} \n"
-    end
-    puts "Game over"
-  end
+    display_welcome_message
 
-  def get_human_spot
-    spot = nil
-    until spot
-      spot = gets.chomp.to_i
-      if @board[spot] != "X" && @board[spot] != "O"
-        @board[spot] = @hum
-      else
-        spot = nil
-      end
-    end
-  end
+    loop do
+      display_board
 
-  def eval_board
-    spot = nil
-    until spot
-      if @board[4] == "4"
-        spot = 4
-        @board[spot] = @com
-      else
-        spot = get_best_move(@board, @com)
-        if @board[spot] != "X" && @board[spot] != "O"
-          @board[spot] = @com
+      until game_over?
+        if human_turn?
+          pick_human_spot
         else
-          spot = nil
+          make_computer_move
         end
+
+        display_board
+        break if game_over?
+
+        @current_player = @current_player == 'X' ? 'O' : 'X'
       end
+
+      display_game_result
+      break unless play_again?
+
+      reset_game
     end
+
+    display_goodbye_message
   end
 
-  def get_best_move(board, next_player, depth = 0, best_score = {})
-    available_spaces = []
-    best_move = nil
-    board.each do |s|
-      if s != "X" && s != "O"
-        available_spaces << s
-      end
+  private
+
+  def display_welcome_message
+    puts 'Welcome to Tic-Tac-Toe!'
+  end
+
+  def display_goodbye_message
+    puts 'Thank you for playing Tic-Tac-Toe. Goodbye!'
+  end
+
+  def display_board
+    puts "\n"
+    (0..6).step(3) do |spot|
+      puts " #{@board[spot]} | #{@board[spot + 1]} | #{@board[spot + 2]} "
+      puts '---+---+---' unless spot == 6
     end
-    available_spaces.each do |as|
-      board[as.to_i] = @com
-      if game_is_over(board)
-        best_move = as.to_i
-        board[as.to_i] = as
-        return best_move
-      else
-        board[as.to_i] = @hum
-        if game_is_over(board)
-          best_move = as.to_i
-          board[as.to_i] = as
-          return best_move
-        else
-          board[as.to_i] = as
-        end
-      end
-    end
-    if best_move
-      return best_move
+    puts "\n"
+  end
+
+  def display_game_result
+    if game_won?
+      puts "#{@players[@current_player]} wins!"
     else
-      n = rand(0..available_spaces.count)
-      return available_spaces[n].to_i
+      puts "It's a tie!"
     end
   end
 
-  def game_is_over(b)
+  def pick_human_spot
+    loop do
+      p 'Enter your move (0-8): '
+      spot = gets.chomp.to_i
 
-    [b[0], b[1], b[2]].uniq.length == 1 ||
-    [b[3], b[4], b[5]].uniq.length == 1 ||
-    [b[6], b[7], b[8]].uniq.length == 1 ||
-    [b[0], b[3], b[6]].uniq.length == 1 ||
-    [b[1], b[4], b[7]].uniq.length == 1 ||
-    [b[2], b[5], b[8]].uniq.length == 1 ||
-    [b[0], b[4], b[8]].uniq.length == 1 ||
-    [b[2], b[4], b[6]].uniq.length == 1
+      if valid_move?(spot)
+        @board[spot] = @current_player
+        break
+      else
+        puts 'Invalid move. Please try again.'
+      end
+    end
   end
 
-  def tie(b)
-    b.all? { |s| s == "X" || s == "O" }
+  def valid_move?(spot)
+    spot.between?(0, 8) && @board[spot] != 'X' && @board[spot] != 'O'
   end
 
+  def human_turn?
+    @game_type == 'human_vs_human' || (@game_type == 'human_vs_computer' && @current_player == 'O')
+  end
+
+  def make_computer_move
+    spot = if @difficulty == 'easy'
+             pick_random_move
+           else
+             pick_best_move
+           end
+
+    @board[spot] = @current_player
+  end
+
+  def pick_random_move
+    available_spots = pick_available_spots
+    available_spots.sample
+  end
+
+  def pick_best_move
+    available_spots = pick_available_spots
+
+    available_spots.each do |spot|
+      @board[spot] = @current_player
+      return spot if game_won?
+
+      @board[spot] = spot.to_s
+    end
+
+    pick_random_move
+  end
+
+  def pick_available_spots
+    @board.each_index.select { |spot| @board[spot] != 'X' && @board[spot] != 'O' }
+  end
+
+  def game_over?
+    game_won? || game_tied?
+  end
+
+  def game_won?
+    WINNING_COMBINATIONS.any? do |combination|
+      combination.all? { |spot| @board[spot] == @current_player }
+    end
+  end
+
+  def game_tied?
+    @board.all? { |spot| %w[X O].include?(spot) }
+  end
+
+  def play_again?
+    p 'Do you want to play again? (yes/no): '
+    choice = gets.chomp.downcase
+    choice == 'yes'
+  end
+
+  def reset_game
+    @board = Array.new(9, &:to_s)
+    @current_player = 'X'
+  end
 end
 
-game = Game.new
+p 'Choose difficulty (easy/hard): '
+difficulty = gets.chomp.downcase
+p 'Choose game type (human_vs_human/human_vs_computer/computer_vc_computer): '
+game_type = gets.chomp.downcase
+game = Game.new(difficulty, game_type)
 game.start_game
